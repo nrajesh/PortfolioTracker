@@ -24,7 +24,7 @@ export async function onRequest(context) {
     .split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
 
   if (!symbols.length) {
-    return { statusCode: 400, headers: HEADERS, body: JSON.stringify({ error: 'symbols query param required' }) };
+    return new Response(JSON.stringify({ error: 'symbols query param required' }), { status: 400, headers: HEADERS })
   }
 
   const qs = '?base=' + encodeURIComponent(base) + '&symbols=' + encodeURIComponent(symbols.join(','));
@@ -36,11 +36,11 @@ export async function onRequest(context) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const j = await res.json();
       if (!j || !j.rates) throw new Error('no rates in response');
-      return { statusCode: 200, headers: HEADERS, body: JSON.stringify(j) };
+      return new Response(JSON.stringify(j), { status: 200, headers: HEADERS })
     } catch (e) {
       errors.push(host.replace(/^https:\/\//, '').split('/')[0] + ': ' + String(e && e.message || e));
     }
   }
 
-  return { statusCode: 502, headers: HEADERS, body: JSON.stringify({ error: errors.join(' / ') }) };
-};
+  return new Response(JSON.stringify({ error: errors.join(' / ') }), { status: 502, headers: HEADERS })
+}

@@ -100,7 +100,7 @@ export async function onRequest(context) {
   const q = event.queryStringParameters || {};
   const symbols = (q.symbols || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 50);
   if (!symbols.length) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'symbols query param required' }) };
+    return new Response(JSON.stringify({ error: 'symbols query param required' }), { status: 400, headers: {} })
   }
   const range = RANGES.includes(q.range) ? q.range : 'max';
 
@@ -128,15 +128,11 @@ export async function onRequest(context) {
     missing.push(symbol);
   }));
 
-  return {
-    statusCode: 200,
-    headers: {
+  return new Response(JSON.stringify({ series, missing, reasons, range, ms: Date.now() - T0 }), { status: 200, headers: {
       'content-type': 'application/json',
       'cache-control': 'public, max-age=3600',
       /* Netlify's edge cache: the same symbols asked for again cost Yahoo
          nothing at all. */
       'netlify-cdn-cache-control': 'public, durable, s-maxage=21600'
-    },
-    body: JSON.stringify({ series, missing, reasons, range, ms: Date.now() - T0 })
-  };
-};
+    } })
+}

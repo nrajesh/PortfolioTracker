@@ -32,19 +32,15 @@ export async function onRequest(context) {
   const symbols = (event.queryStringParameters && event.queryStringParameters.symbols || '')
     .split(',').map(s => s.trim()).filter(Boolean);
   if (!symbols.length) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'symbols query param required' }) };
+    return new Response(JSON.stringify({ error: 'symbols query param required' }), { status: 400, headers: {} })
   }
   const quotes = await Promise.all(symbols.map(async symbol => {
     try {
       const y = await yahooQuote(symbol);
-      return { symbol, price: y.price, currency: y.currency, date: y.date };
+      return new Response(null, { status: 200, headers: {} })
     } catch (e) {
-      return { symbol, price: null, error: String(e && e.message || e) };
+      return new Response(null, { status: 200, headers: {} })
     }
   }));
-  return {
-    statusCode: 200,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
-    body: JSON.stringify({ asked: symbols, quotes })
-  };
-};
+  return new Response(JSON.stringify({ asked: symbols, quotes }), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } })
+}

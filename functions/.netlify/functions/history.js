@@ -64,7 +64,7 @@ export async function onRequest(context) {
   const q = event.queryStringParameters || {};
   const symbol = (q.symbol || '').trim();
   if (!symbol) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'symbol query param required' }) };
+    return new Response(JSON.stringify({ error: 'symbol query param required' }), { status: 400, headers: {} })
   }
   const from = /^\d{4}-\d{2}-\d{2}$/.test(q.from || '') ? q.from : '2015-01-01';
   const p1 = Math.floor(new Date(from + 'T00:00:00Z').getTime() / 1000);
@@ -81,15 +81,11 @@ export async function onRequest(context) {
   for (const [host, how, params] of plan) {
     try {
       const got = await attempt(host, symbol, params);
-      return {
-        statusCode: 200,
-        headers: {
+      return new Response(JSON.stringify(Object.assign({ symbol, via: how }, got)), { status: 200, headers: {
           'content-type': 'application/json',
           'cache-control': 'public, max-age=3600',
           'netlify-cdn-cache-control': 'public, durable, s-maxage=21600'
-        },
-        body: JSON.stringify(Object.assign({ symbol, via: how }, got))
-      };
+        } })
     } catch (e) {
       lastErr = String((e && e.name) === 'AbortError' ? 'timed out' : (e && e.message) || e);
       /* A 429 means the burst was too fast, not that the symbol is unknown -
@@ -98,20 +94,12 @@ export async function onRequest(context) {
         await sleep(1200);
         try {
           const got = await attempt(host, symbol, params);
-          return {
-            statusCode: 200,
-            headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' },
-            body: JSON.stringify(Object.assign({ symbol, via: how + ' (retried)' }, got))
-          };
+          return new Response(JSON.stringify(Object.assign({ symbol, via: how + ' (retried)' }, got)), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' } })
         } catch (e2) {
           lastErr = String((e2 && e2.name) === 'AbortError' ? 'timed out' : (e2 && e2.message) || e2);
         }
       }
     }
   }
-  return {
-    statusCode: 200,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
-    body: JSON.stringify({ symbol, error: lastErr })
-  };
-};
+  return new Response(JSON.stringify({ symbol, error: lastErr }), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } })
+}

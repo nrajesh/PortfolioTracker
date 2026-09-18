@@ -108,17 +108,13 @@ export async function onRequest(context) {
   const symbols = (event.queryStringParameters && event.queryStringParameters.symbols || '')
     .split(',').map(s => s.trim()).filter(Boolean).slice(0, 60);
   if (!symbols.length) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'symbols query param required' }) };
+    return new Response(JSON.stringify({ error: 'symbols query param required' }), { status: 400, headers: {} })
   }
   let a;
   try {
     a = await auth();
   } catch (e) {
-    return {
-      statusCode: 200,
-      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
-      body: JSON.stringify({ profiles: {}, error: 'yahoo auth failed: ' + String(e && e.message || e) })
-    };
+    return new Response(JSON.stringify({ profiles: {}, error: 'yahoo auth failed: ' + String(e && e.message || e) }), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } })
   }
   /* Resolve every ISIN to a ticker before asking for anything. */
   const resolved = {};
@@ -149,9 +145,5 @@ export async function onRequest(context) {
       empty: !q.name && !(fp && (fp.ter != null || fp.family))
     };
   }));
-  return {
-    statusCode: 200,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
-    body: JSON.stringify({ asked: symbols, profiles })
-  };
-};
+  return new Response(JSON.stringify({ asked: symbols, profiles }), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } })
+}
