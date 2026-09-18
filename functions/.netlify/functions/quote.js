@@ -37,9 +37,9 @@ export async function onRequest(context) {
   const quotes = await Promise.all(symbols.map(async symbol => {
     try {
       const y = await yahooQuote(symbol);
-      return new Response(null, { status: 200, headers: {} })
+      return { symbol, price: y.price, currency: y.currency, date: y.date };
     } catch (e) {
-      return new Response(null, { status: 200, headers: {} })
+      return { symbol, price: null, error: String(e && e.message || e) };
     }
   }));
   return new Response(JSON.stringify({ asked: symbols, quotes }), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } })
