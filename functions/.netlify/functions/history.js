@@ -15,7 +15,9 @@
 // fetch is therefore bounded, and there are at most three.
 
 const TIMEOUT_MS = 4000;
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
+// A plain "Mozilla/5.0", as quote and sparks use: Yahoo rate-limits a full
+// desktop-Chrome string from server IPs.
+const UA = 'Mozilla/5.0';
 
 async function attempt(host, symbol, params) {
   const ctrl = new AbortController();

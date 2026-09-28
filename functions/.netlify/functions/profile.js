@@ -18,24 +18,78 @@
 // Anything missing comes back null rather than guessed - a blank cell in the
 // UI is honest, an invented TER is not.
 
-const UA = { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36' };
+/* The bare "Mozilla/5.0" the price fetch already uses. A full desktop-Chrome
+   string is rate-limited by Yahoo from server IPs (429 on every endpoint,
+   crumb included) while this one is served - the difference between fund
+   details loading on Netlify and never loading at all. */
+const UA = { 'User-Agent': 'Mozilla/5.0' };
 
 let crumbCache = null;
 
 /* The quote and quoteSummary endpoints require a cookie plus a matching
-   crumb. One handshake serves every symbol in the batch. */
+   crumb. One handshake serves every symbol in the batch.
+
+   Yahoo rate-limits the crumb endpoint hard from shared cloud IPs (AWS, so
+   Netlify in particular) and answers 429 with the body "Too Many Requests".
+   Taking that body as the crumb made every later call fail and every profile
+   come back empty with no error at all - so the status and the crumb's shape
+   are both checked, both query hosts are tried, and only a real crumb is
+   ever cached. */
+const CRUMB_RE = /^[A-Za-z0-9._\/-]{6,32}$/;
+
 async function auth() {
   if (crumbCache && Date.now() - crumbCache.at < 30 * 60 * 1000) return crumbCache;
   const r1 = await fetch('https://fc.yahoo.com', { headers: UA, redirect: 'manual' });
   const cookie = (r1.headers.get('set-cookie') || '').split(';')[0];
   if (!cookie) throw new Error('no cookie');
-  const r2 = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', {
-    headers: Object.assign({ cookie }, UA)
-  });
-  const crumb = (await r2.text()).trim();
-  if (!crumb || crumb.length > 32) throw new Error('no crumb');
-  crumbCache = { cookie, crumb, at: Date.now() };
-  return crumbCache;
+  let last = 'no crumb';
+  for (const host of ['query1', 'query2']) {
+    const r2 = await fetch('https://' + host + '.finance.yahoo.com/v1/test/getcrumb', {
+      headers: Object.assign({ cookie }, UA)
+    });
+    const crumb = (await r2.text()).trim();
+    if (r2.ok && CRUMB_RE.test(crumb)) {
+      crumbCache = { cookie, crumb, at: Date.now() };
+      return crumbCache;
+    }
+    last = 'crumb ' + r2.status;
+  }
+  throw new Error(last);
+}
+
+/* A crumb Yahoo has stopped accepting is dropped, so the next request
+   handshakes afresh instead of reusing it for the rest of the half hour. */
+function checkAuth(res) {
+  if (res.status === 401 || res.status === 403) crumbCache = null;
+}
+
+/* Name, exchange and instrument type from the chart endpoint - the one the
+   price fetch uses, which needs no crumb. When the crumb is refused this is
+   all that can be read, and it is returned as a limited profile rather than
+   an empty one. */
+async function chartMeta(symbol) {
+  const res = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(symbol) + '?range=1d&interval=1d', { headers: UA });
+  if (!res.ok) return null;
+  const j = await res.json();
+  const m = j && j.chart && j.chart.result && j.chart.result[0] && j.chart.result[0].meta;
+  return m ? { name: m.longName || m.shortName || null, exchange: m.fullExchangeName || m.exchangeName || null, quoteType: m.instrumentType || null } : null;
+}
+
+async function limitedProfiles(symbols, reason) {
+  const profiles = {};
+  await Promise.all(symbols.map(async s => {
+    let m = null;
+    if (!isIsin(s)) { try { m = await chartMeta(s); } catch (e) { m = null; } }
+    profiles[s] = {
+      resolved: null, name: (m && m.name) || null, exchange: (m && m.exchange) || null, quoteType: (m && m.quoteType) || null,
+      yield: null, divRate: null, divDate: null, ter: null, family: null, legalType: null, category: null,
+      sector: null, industry: null, isin: null, via: null, sectors: null, stockPct: null,
+      /* Fund data could not be asked for at all - distinct from Yahoo
+         having nothing, so the UI can offer a retry. */
+      limited: true, empty: false
+    };
+  }));
+  return new Response(JSON.stringify({ asked: symbols, profiles, authError: reason }), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 }
 
 const num = v => (v && typeof v === 'object' ? v.raw : v);
@@ -69,6 +123,7 @@ async function quoteFields(symbols, a) {
   const url = 'https://query1.finance.yahoo.com/v7/finance/quote?symbols='
     + encodeURIComponent(symbols.join(',')) + '&crumb=' + encodeURIComponent(a.crumb);
   const res = await fetch(url, { headers: Object.assign({ cookie: a.cookie }, UA) });
+  checkAuth(res);
   if (!res.ok) throw new Error('quote ' + res.status);
   const j = await res.json();
   const out = {};
@@ -92,6 +147,7 @@ async function summary(symbol, modules, a) {
   const url = 'https://query1.finance.yahoo.com/v10/finance/quoteSummary/' + encodeURIComponent(symbol)
     + '?modules=' + modules + '&crumb=' + encodeURIComponent(a.crumb);
   const res = await fetch(url, { headers: Object.assign({ cookie: a.cookie }, UA) });
+  checkAuth(res);
   if (!res.ok) return null;
   const j = await res.json();
   return (j && j.quoteSummary && j.quoteSummary.result && j.quoteSummary.result[0]) || null;
@@ -214,7 +270,7 @@ export async function onRequest(context) {
   try {
     a = await auth();
   } catch (e) {
-    return new Response(JSON.stringify({ profiles: {}, error: 'yahoo auth failed: ' + String(e && e.message || e) }), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } })
+    return limitedProfiles(symbols, String(e && e.message || e));
   }
   /* Resolve every ISIN to a ticker before asking for anything. */
   const resolved = {};
