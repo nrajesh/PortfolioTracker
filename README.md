@@ -13,3 +13,14 @@ Functions live at `functions/.netlify/functions/*.js` on purpose — Cloudflare 
 - Functions use the Workers `fetch`/`Request`/`Response` runtime — no Node-specific APIs were used in the originals, so no rewrites were needed beyond the handler signature.
 - `profile.js` caches a Yahoo auth crumb in a module-level variable (`crumbCache`) — on Cloudflare this resets per isolate the same way it does on Netlify's per-invocation coldstarts; behavior is unchanged.
 - No environment variables or secrets are used by any function.
+
+## Editing the frontend
+`index.html` is a self-contained bundle: the page source is a JSON string inside `<script type="__bundler/template">`, with scripts and fonts base64-packed in the manifest. To change the UI:
+
+```sh
+python3 tools/bundle.py unpack build/   # build/template.html is the readable source
+# edit build/template.html
+python3 tools/bundle.py pack build/     # writes it back into index.html
+```
+
+`pack` only rewrites the template block; an unpack → pack with no edits reproduces `index.html` byte-for-byte. `build/` is scratch and not committed.
