@@ -35,3 +35,7 @@ python3 tools/bundle.py pack build/     # writes it back into index.html
 ```
 
 `pack` only rewrites the template block; an unpack → pack with no edits reproduces `index.html` byte-for-byte. `build/` is scratch and not committed.
+
+If you remove an `@font-face` from the template, run `python3 tools/bundle.py prune build/` after packing. It drops packed fonts the page no longer references. To pack a new font, run `python3 tools/bundle.py add path/to/font.woff2` and use the id it prints as the `url("...")` in an `@font-face`. These two are the only commands that edit the manifest.
+
+The headline figures use Source Serif 4 (SIL Open Font License), packed as a digits-and-currency subset.
